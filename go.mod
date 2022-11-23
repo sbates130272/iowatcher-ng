@@ -1,3 +1,3 @@
 module github.com/sbates130272/iowatcher-ng
 
-go 1.19
+go 1.18
