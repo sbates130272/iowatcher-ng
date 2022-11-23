@@ -9,10 +9,10 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
 )
 
 func main() {
-	println(C.BLK_TC_READ)
 	// Listen on TCP port 2000 on all available unicast and
 	// anycast IP addresses of the local system.
 	l, err := net.Listen("tcp", ":2000")
@@ -31,7 +31,7 @@ func main() {
 		// multiple connections may be served concurrently.
 		go func(c net.Conn) {
 			// Echo all incoming data.
-			io.Copy(c, c)
+			io.Copy(os.Stdout, c)
 			// Shut down the connection.
 			c.Close()
 		}(conn)
