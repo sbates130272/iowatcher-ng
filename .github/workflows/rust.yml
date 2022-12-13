@@ -28,6 +28,9 @@ jobs:
         run: cargo test --verbose
       - name: asciidoctor-ghpages
         uses: manoelcampos/asciidoctor-ghpages-action@v2
+        with:
+          pdf_build: true
+          source_dir: docs/
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
