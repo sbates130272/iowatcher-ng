@@ -1,0 +1,5 @@
+[TIP]
+====
+[.lead]
+The manual is written in https://asciidoc.org[AsciiDoc] and includes some extra files which are generated from the source code. Run `asciidoctor index.adoc` to create an HTML copy.
+====
