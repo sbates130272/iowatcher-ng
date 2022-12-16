@@ -7,5 +7,3 @@ deploy:
 	cd /tmp/book && \
 		git update-ref -d refs/heads/gh-pages ; \
 		git add -fA && \
-		git commit -m "deployed on $(shell date) by ${USER}" && \
-		git push --force origin gh-pages
