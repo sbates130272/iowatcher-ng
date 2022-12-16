@@ -80,10 +80,8 @@ jobs:
         with:
           mdbook-version: 0.4.12
       - name: Build docs
-        working-directory: docs/
         run: mdbook build
       - name: Deploy docs to gh-pages branch
-        working-directory: docs/
         run: |
           git config --local user.name "GitHub Action"
           git config --global user.email "gcifuentes@escandasoft.eu"
