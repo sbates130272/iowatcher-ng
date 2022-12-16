@@ -46,10 +46,10 @@ jobs:
     steps:
       - name: Checkout project
         uses: actions/checkout@v3
-         - name: Install mdbook
-      uses: peaceiris/actions-mdbook@v1
-      with:
-        mdbook-version: 0.4.12
+      - name: Install mdbook
+        uses: peaceiris/actions-mdbook@v1
+        with:
+          mdbook-version: 0.4.12
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
