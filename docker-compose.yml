@@ -5,13 +5,13 @@ networks:
     driver: bridge
 
 volumes:
-  prometheus_data: {}
+  prometheus-data: {}
   grafana-data: {}
 
 services:
   node-exporter:
     image: prom/node-exporter:v1.5.0
-    container_name: node-exporter
+    container_name: prom/node-exporter
     restart: unless-stopped
     volumes:
       - /proc:/host/proc:ro
@@ -29,11 +29,11 @@ services:
 
   prometheus:
     image: prom/prometheus:v2.40.5
-    container_name: prometheus
+    container_name: prom/prometheus
     restart: unless-stopped
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus_data:/prometheus
+      - prometheus-data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -47,9 +47,10 @@ services:
     networks:
       - monitoring
 
-  blkio-exporter:
+  iowacher-ng-exporter:
     build: .
-    image: iowatcherng-exporter:v0.1.0
+    image: iowatcher-ng/exporter:v0.1.0
+    container_name: iowatcher-ng/exporter
     expose:
       - 9000
       - 9001
@@ -62,6 +63,7 @@ services:
 
   grafana:
     image: grafana/grafana:7.5.7
+    container_name: grafana/grafana6
     ports:
       - 3000:3000
     restart: unless-stopped
