@@ -46,11 +46,15 @@ jobs:
     steps:
       - name: Checkout project
         uses: actions/checkout@v3
+         - name: Install mdbook
+      uses: peaceiris/actions-mdbook@v1
+      with:
+        mdbook-version: 0.4.12
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          components: clippy,mdbook
+          components: clippy
           override: true
       - name: Clippy linter check
         uses: actions-rs/clippy-check@v1
@@ -61,7 +65,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: target/
-          key: ${{ runner.os }}-build-${{ hashFiles('Cargo.lock') }}
+          key: ${{ runner.os }}-build-${{ hashFiles('Cargo.toml') }}
           restore-keys: |
             ${{ runner.os }}-build-
       - name: Build
