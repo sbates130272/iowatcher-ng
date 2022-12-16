@@ -31,22 +31,19 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-use clap::{command, Parser};
-use itertools::{izip, Itertools};
+use clap::command;
+use clap::Parser;
 use metrics::increment_counter;
 use metrics_exporter_prometheus::PrometheusBuilder;
-use std::io::prelude::*;
-use std::net::SocketAddr;
-use std::ops::Deref;
-use std::process::{Command, Stdio};
-use std::str::FromStr;
 use std::{
     error::Error,
     fs::File,
     io::{self, Read},
     mem::size_of,
+    net::SocketAddr,
     os::unix::prelude::{AsRawFd, FromRawFd},
-    str,
+    process::{Command, Stdio},
+    str::{self, FromStr},
 };
 
 mod blktrace {

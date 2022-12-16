@@ -72,5 +72,28 @@ jobs:
         run: cargo build --verbose
       - name: Run tests
         run: cargo test --verbose
-      - name: Deploy to GitHub Pages
-        run: make deploy
+  
+  deploy:
+    name: Deploy docs to gh-pages
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout gh-pages
+        uses: actions/checkout@v2
+        with:
+          path: docs
+          ref: gh-pages
+      - name: Unpack build
+        uses: actions/download-artifact@v2
+        with:
+          name: Build output
+          path: docs/
+      - name: Deploy
+        working-directory: docs/
+        run: |
+          git config --local user.name "GitHub Action"
+          git config --global user.email "gcifuentes@escandasoft.eu"
+          git remote -v
+          git branch -v
+          git add -A
+          git commit -am 'Update build'
+          git push -v
