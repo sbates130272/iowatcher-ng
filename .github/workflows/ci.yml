@@ -50,9 +50,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          components:
-            - clippy
-            - mdbook
+          components: clippy,mdbook
           override: true
       - name: Clippy linter check
         uses: actions-rs/clippy-check@v1
