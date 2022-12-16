@@ -41,7 +41,7 @@ env:
 
 jobs:
   build:
-    name: Setup env & build project & perform tests
+    name: Build project, lint & run tests
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout project
