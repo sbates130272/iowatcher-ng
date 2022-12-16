@@ -33,7 +33,7 @@
 name: CI
 
 on:
-  merge:
+  pull_request:
     branches: [ "main" ]
 
 env:
