@@ -1,8 +1,8 @@
 /*
 BSD 3-Clause License
 
-Copyright (c) 2022, Stephen Bates
-Copyright (c) 2022, Guillermo Cifuentes, gcifuentes@escandasoft.eu
+Copyright (c) 2022, Stephen Bates <sbates@raithlin.com>
+Copyright (c) 2022, Guillermo Cifuentes <gcifuentes@escandasoft.eu>
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without

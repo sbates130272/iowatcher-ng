@@ -1,7 +1,7 @@
 version: '3.8'
 
 networks:
-  monitoring:
+  bridge:
     driver: bridge
 
 volumes:
@@ -25,7 +25,7 @@ services:
     ports:
       - 9100:9100
     networks:
-      - monitoring
+      - bridge
 
   prometheus:
     image: prom/prometheus:v2.40.5
@@ -45,25 +45,25 @@ services:
     expose:
       - 9090
     networks:
-      - monitoring
+      - bridge
 
-  iowacher-ng-exporter:
+  iowacherng-exporter:
     build: .
-    image: iowatcher-ng/exporter:v0.1.0
-    container_name: iowatcher-ng/exporter
+    image: iowatcherng/exporter:v0.1.0
+    container_name: iowatcherng/exporter
     expose:
-      - 9000
+      - 9975
       - 9001
     command: bash -c 'nc -l -p 9001 | iowatcherng-exporter ingest --input -'
     ports:
-      - 9000:9000
+      - 9975:9975
       - 9001:9001
     networks:
-      - monitoring
+      - bridge
 
   grafana:
     image: grafana/grafana:7.5.7
-    container_name: grafana/grafana6
+    container_name: grafana/grafana
     ports:
       - 3000:3000
     restart: unless-stopped
@@ -71,4 +71,4 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning
       - grafana-data:/var/lib/grafana
     networks:
-      - monitoring
+      - bridge

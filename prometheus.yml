@@ -11,6 +11,6 @@ scrape_configs:
     static_configs:
     - targets: ["node-exporter:9100"]
 
-  - job_name: "blkio-exporter"
+  - job_name: "iowatcherng-exporter"
     static_configs:
-    - targets: ["blkio-exporter:9000"]
+    - targets: ["iowatcherng-exporter:9000"]

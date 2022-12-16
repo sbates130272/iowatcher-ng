@@ -1,9 +1,8 @@
 [package]
-name = "iowatcherng"
+name = "iowatcherng-exporter"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = [ "Stephen Bates <sbates@raithlin.com>", "Guillermo Cifuentes <gcifuentes@escandasoft.eu>" ]
 
 [dependencies]
 # derive is enabled in clap in order to use it in struct with macros

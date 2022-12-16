@@ -13,6 +13,6 @@ RUN cargo install --path .
 FROM ubuntu:22.04
 RUN apt-get update && apt-get -y install netcat
 WORKDIR /usr/bin
-COPY --from=0 /usr/src/myapp/target/release/iowatcherng ./iowatcherng-exporter
+COPY --from=0 /usr/src/myapp .
 EXPOSE 9975
 CMD [ "iowatcherng-exporter" ]
