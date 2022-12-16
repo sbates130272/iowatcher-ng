@@ -46,10 +46,6 @@ jobs:
     steps:
       - name: Checkout project
         uses: actions/checkout@v3
-      - name: Install mdbook
-        uses: peaceiris/actions-mdbook@v1
-        with:
-          mdbook-version: 0.4.12
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
@@ -77,17 +73,19 @@ jobs:
     name: Deploy docs to gh-pages
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout gh-pages
-        uses: actions/checkout@v2
+      - name: Checkout project
+        uses: actions/checkout@v3
         with:
           path: docs
           ref: gh-pages
-      - name: Unpack build
-        uses: actions/download-artifact@v2
+      - name: Install mdbook
+        uses: peaceiris/actions-mdbook@v1
         with:
-          name: Build output
-          path: docs/
-      - name: Deploy
+          mdbook-version: 0.4.12
+      - name: Build docs
+        working-directory: docs/
+        run: mdbook build
+      - name: Deploy docs to gh-pages branch
         working-directory: docs/
         run: |
           git config --local user.name "GitHub Action"
