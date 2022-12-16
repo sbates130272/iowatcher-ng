@@ -75,9 +75,6 @@ jobs:
     steps:
       - name: Checkout project
         uses: actions/checkout@v3
-        with:
-          path: docs
-          ref: gh-pages
       - name: Install mdbook
         uses: peaceiris/actions-mdbook@v1
         with:
