@@ -30,41 +30,35 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-name: CI
+name: mdBook
 
 on:
-  pull_request:
-    branches: [ "main" ]
+  push:
+    branches:
+      - 'main'
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-    name: Build project, lint & run tests
+  deploy:
+    name: Deploy docs to gh-pages
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout project
         uses: actions/checkout@v3
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+      - name: Install mdbook
+        uses: peaceiris/actions-mdbook@v1
         with:
-          toolchain: stable
-          components: clippy
-          override: true
-      - name: Clippy linter check
-        uses: actions-rs/clippy-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-features
-      - name: Cache build dir
-        uses: actions/cache@v2
-        with:
-          path: target/
-          key: ${{ runner.os }}-build-${{ hashFiles('Cargo.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-build-
-      - name: Build
-        run: cargo build --verbose
-      - name: Run tests
-        run: cargo test --verbose
+          mdbook-version: 0.4.12
+      - name: Build docs
+        run: mdbook build
+      - name: Deploy docs to gh-pages branch
+        run: |
+          git config --local user.name "GitHub Action"
+          git config --global user.email "gcifuentes@escandasoft.eu"
+          git remote -v
+          git branch -v
+          git add -A
+          git commit -am 'Update build'
+          git push -v
