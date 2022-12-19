@@ -31,17 +31,28 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+use bytes::Bytes;
 use clap::command;
 use clap::Parser;
-use metrics::increment_counter;
+use crossbeam::deque::Stealer;
+use crossbeam::deque::Worker;
+use metrics::*;
 use metrics_exporter_prometheus::PrometheusBuilder;
+use quinn::Endpoint;
+use quinn::ServerConfig;
+use std::borrow::BorrowMut;
+use std::fs::read;
+use std::fs::File;
+use std::io::BufReader;
+use std::iter::FusedIterator;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Instant;
 use std::{
     error::Error,
-    fs::File,
     io::{self, Read},
     mem::size_of,
     net::SocketAddr,
-    os::unix::prelude::{AsRawFd, FromRawFd},
     process::{Command, Stdio},
     str::{self, FromStr},
 };
@@ -64,20 +75,42 @@ static STDIN_PATH: &str = "-";
 struct Args {
     /// subcommand
     #[command(subcommand)]
-    command: Subcommand,
+    command: CmdKind,
 }
 
 #[derive(clap::Subcommand, Debug)]
-enum Subcommand {
+enum CmdKind {
+    /// fork device list and serve if serve enabled
     Fork {
         /// list of devices to blktrace
-        #[arg(short, long)]
         device: Vec<String>,
+
+        /// serve blktrace over quicc
+        serve: bool,
+
+        /// port to serve to over quicc
+        port: u16,
+
+        /// certificate chain
+        chain: PathBuf,
+
+        /// private key
+        privkey: PathBuf,
     },
-    Ingest {
-        /// Input file path, - for stdin
-        #[arg(short, long, default_value_t = STDIN_PATH.to_string(),)]
-        input: String,
+
+    /// send device list to remote host on port and host
+    Send {
+        /// list of devices to blktrace
+        device: Vec<String>,
+
+        /// remote port
+        port: u16,
+
+        /// remote host
+        host: String,
+
+        /// public key
+        pubkey: PathBuf,
     },
 }
 
@@ -89,54 +122,131 @@ async fn process_input(input: &mut dyn Read) -> Result<(), Box<dyn Error>> {
         let trace: blktrace::blk_io_trace = unsafe { std::mem::transmute(buffer) };
         let mut str_vec = Vec::<u8>::with_capacity(trace.pdu_len.into());
         io::copy(&mut input.take(trace.pdu_len.into()), &mut str_vec)?;
-        //let str: String = String::from(str::f+rom_utf8(&str_vec)?);
-        //println!("str: {}", str);
-        increment_counter!("iowatcherng-exporter.packets_read");
-        if (trace.magic & 0xffffff00) != blktrace::BLK_IO_TRACE_MAGIC {
-            println!("Bad pkt magic");
-        } else {
-            if (trace.action & !blktrace::blktrace_notify___BLK_TN_CGROUP) == blktrace::blktrace_notify___BLK_TN_MESSAGE
-            {
-                println!("NOTIFY");
-                match trace.action & !blktrace::blktrace_notify___BLK_TN_CGROUP {
-                    blktrace::blktrace_notify___BLK_TN_PROCESS => println!("PROCESS"),
-                    blktrace::blktrace_notify___BLK_TN_TIMESTAMP => println!("TS"),
-                    blktrace::blktrace_notify___BLK_TN_MESSAGE => println!("MS"),
-                    _ => println!("Unk NOTIFY"),
-                }
-            } else if (trace.action & blktrace::blk_tc_act(blktrace::blktrace_cat_BLK_TC_PC)) == 0 {
-                println!("PC");
-                let _w = (trace.action & blktrace::blk_tc_act(blktrace::blktrace_cat_BLK_TC_WRITE)) != 0;
-                let act = (trace.action & 0xffff) & !blktrace::blktrace_act___BLK_TA_CGROUP;
-                match act {
-                    blktrace::blktrace_act___BLK_TA_QUEUE => println!("TQ"),
-                    blktrace::blktrace_act___BLK_TA_GETRQ => println!("RQ"),
-                    blktrace::blktrace_act___BLK_TA_SLEEPRQ => println!("SPRQ"),
-                    blktrace::blktrace_act___BLK_TA_REQUEUE => println!("REQ"),
-                    blktrace::blktrace_act___BLK_TA_ISSUE => println!("ISSUE"),
-                    blktrace::blktrace_act___BLK_TA_COMPLETE => println!("COMPLETE"),
-                    blktrace::blktrace_act___BLK_TA_INSERT => println!("INSERT"),
-                    _ => println!("Unk PC"),
-                }
-            } else {
-                println!("CGROUP");
-                let _w = (trace.action & blktrace::blk_tc_act(blktrace::blktrace_cat_BLK_TC_WRITE)) != 0;
-                let act = (trace.action & 0xffff) & !blktrace::blktrace_act___BLK_TA_CGROUP;
-                match act {
-                    blktrace::blktrace_act___BLK_TA_QUEUE => println!("TQ"),
-                    blktrace::blktrace_act___BLK_TA_INSERT => println!("RQ"),
-                    blktrace::blktrace_act___BLK_TA_BACKMERGE => println!("SPRQ"),
-                    blktrace::blktrace_act___BLK_TA_FRONTMERGE => println!("REQ"),
-                    blktrace::blktrace_act___BLK_TA_GETRQ => println!("ISSUE"),
-                    blktrace::blktrace_act___BLK_TA_SLEEPRQ => println!("COMPLETE"),
-                    blktrace::blktrace_act___BLK_TA_REQUEUE => println!("INSERT"),
-                    _ => println!("Unk CGROUP"),
-                }
-            }
-        }
+        let str: String = String::from(str::from_utf8(&str_vec)?);
+        describe_histogram!(
+            "iowatcherng-exporter.packet_time",
+            "Histogram of packet processing time by main loop"
+        );
+        let now = Instant::now();
         buffer = [0; FRAGMENT_SIZE];
+        match on_pkt(trace, &str) {
+            Ok(()) => {
+                let elapsed = now.elapsed();
+                histogram!("iowatcherng-exporter.packet_time", elapsed, "ok" => "true")
+            },
+            Err(err) => {
+                let elapsed = now.elapsed();
+                histogram!("iowatcherng-exporter.packet_time", elapsed, "ok" => "false", "message" => format!("{}", err))
+            },
+        }
     }
     Ok(())
+}
+
+fn on_pkt(trace: blktrace::blk_io_trace, _str: &str) -> Result<(), Box<std::io::Error>> {
+    if (trace.magic & 0xffffff00) != blktrace::BLK_IO_TRACE_MAGIC {
+        eprintln!("Bad pkt magic");
+        Err(Box::new(std::io::Error::new(
+            io::ErrorKind::Unsupported,
+            format!("cannot address packets with magic value {}", trace.magic),
+        )))
+    } else {
+        if (trace.action & !blktrace::blktrace_notify___BLK_TN_CGROUP) == blktrace::blktrace_notify___BLK_TN_MESSAGE {
+            println!("NOTIFY");
+            match trace.action & !blktrace::blktrace_notify___BLK_TN_CGROUP {
+                blktrace::blktrace_notify___BLK_TN_PROCESS => println!("PROCESS"),
+                blktrace::blktrace_notify___BLK_TN_TIMESTAMP => println!("TS"),
+                blktrace::blktrace_notify___BLK_TN_MESSAGE => println!("MS"),
+                _ => println!("Unk NOTIFY"),
+            }
+        } else if (trace.action & blktrace::blk_tc_act(blktrace::blktrace_cat_BLK_TC_PC)) == 0 {
+            println!("PC");
+            let _w = (trace.action & blktrace::blk_tc_act(blktrace::blktrace_cat_BLK_TC_WRITE)) != 0;
+            let act = (trace.action & 0xffff) & !blktrace::blktrace_act___BLK_TA_CGROUP;
+            match act {
+                blktrace::blktrace_act___BLK_TA_QUEUE => println!("TQ"),
+                blktrace::blktrace_act___BLK_TA_GETRQ => println!("RQ"),
+                blktrace::blktrace_act___BLK_TA_SLEEPRQ => println!("SPRQ"),
+                blktrace::blktrace_act___BLK_TA_REQUEUE => println!("REQ"),
+                blktrace::blktrace_act___BLK_TA_ISSUE => println!("ISSUE"),
+                blktrace::blktrace_act___BLK_TA_COMPLETE => println!("COMPLETE"),
+                blktrace::blktrace_act___BLK_TA_INSERT => println!("INSERT"),
+                _ => println!("Unk PC"),
+            }
+        } else {
+            println!("CGROUP");
+            let _w = (trace.action & blktrace::blk_tc_act(blktrace::blktrace_cat_BLK_TC_WRITE)) != 0;
+            let act = (trace.action & 0xffff) & !blktrace::blktrace_act___BLK_TA_CGROUP;
+            match act {
+                blktrace::blktrace_act___BLK_TA_QUEUE => println!("TQ"),
+                blktrace::blktrace_act___BLK_TA_INSERT => println!("RQ"),
+                blktrace::blktrace_act___BLK_TA_BACKMERGE => println!("SPRQ"),
+                blktrace::blktrace_act___BLK_TA_FRONTMERGE => println!("REQ"),
+                blktrace::blktrace_act___BLK_TA_GETRQ => println!("ISSUE"),
+                blktrace::blktrace_act___BLK_TA_SLEEPRQ => println!("COMPLETE"),
+                blktrace::blktrace_act___BLK_TA_REQUEUE => println!("INSERT"),
+                _ => println!("Unk CGROUP"),
+            }
+        }
+        Ok(())
+    }
+}
+
+struct SkipServerVerification;
+
+impl SkipServerVerification {
+    fn new() -> Arc<Self> {
+        Arc::new(Self)
+    }
+}
+
+impl rustls::client::ServerCertVerifier for SkipServerVerification {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &rustls::Certificate,
+        _intermediates: &[rustls::Certificate],
+        _server_name: &rustls::ServerName,
+        _scts: &mut dyn Iterator<Item = &[u8]>,
+        _ocsp_response: &[u8],
+        _now: std::time::SystemTime,
+    ) -> Result<rustls::client::ServerCertVerified, rustls::Error> {
+        Ok(rustls::client::ServerCertVerified::assertion())
+    }
+}
+
+pub fn read_certs_from_file(
+    chain: &PathBuf,
+    privkey: &PathBuf,
+) -> Result<(Vec<rustls::Certificate>, rustls::PrivateKey), Box<dyn Error>> {
+    let mut cert_chain_reader = BufReader::new(File::open(chain)?);
+    let certs = rustls_pemfile::certs(&mut cert_chain_reader)?
+        .into_iter()
+        .map(rustls::Certificate)
+        .collect();
+
+    let mut key_reader = BufReader::new(File::open(privkey)?);
+    // if the file starts with "BEGIN RSA PRIVATE KEY"
+    // let mut keys = rustls_pemfile::rsa_private_keys(&mut key_reader)?;
+    // if the file starts with "BEGIN PRIVATE KEY"
+    let mut keys = rustls_pemfile::pkcs8_private_keys(&mut key_reader)?;
+
+    assert_eq!(keys.len(), 1);
+    let key = rustls::PrivateKey(keys.remove(0));
+
+    Ok((certs, key))
+}
+
+struct WorkerAdaptor {
+    stealer: Stealer<Vec<u8>>,
+}
+
+impl Iterator for WorkerAdaptor {
+    type Item = Vec<u8>;
+
+    fn next(&mut self) -> Option<Vec<u8>> {
+        let item = self.stealer.steal();
+        item.success()
+    }
 }
 
 #[tokio::main]
@@ -146,10 +256,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
     PrometheusBuilder::new()
         .with_http_listener(SocketAddr::from_str("::9975").unwrap())
         .install()
-        .expect("failed to install Prometheus recoder/exporter");
+        .expect("able to install Prometheus recoder/exporter");
 
     match &args.command {
-        Subcommand::Fork { device } => {
+        CmdKind::Fork {
+            device,
+            serve,
+            port,
+            chain,
+            privkey,
+        } => {
             let mut arg_stack = Vec::new();
             for dev in device {
                 arg_stack.push("-d".to_string());
@@ -164,20 +280,41 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .spawn()
             {
                 Err(why) => panic!("couldn't spawn blktrace: {}", why),
-                Ok(mut child) => {
-                    let mut stdout = child.stdout.expect("stdout is opened at this time");
-                    process_input(&mut stdout).await?;
+                Ok(child) => {
+                    let mut instdout = child.stdout.expect("stdout is opened at this time");
+                    let fifo = Worker::<Vec<u8>>::new_fifo();
+                    if *serve {
+                        let (certs, privkey) = read_certs_from_file(chain, privkey)?;
+                        let mut buffer: [u8; FRAGMENT_SIZE] = [0; FRAGMENT_SIZE];
+                        match Endpoint::server(
+                            ServerConfig::with_single_cert(certs, privkey)?,
+                            SocketAddr::from_str(format!("::{}", port).as_str())?,
+                        ) {
+                            Ok(endpoint) => {
+                                if let Some(accept) = endpoint.accept().await {
+                                    let (connection, _) = accept.into_0rtt().expect("can use 0rtt");
+                                    if let Ok(mut send_stream) = connection.open_uni().await {
+                                        let bytes_read = instdout.read(&mut buffer).expect("readable stdout buffer");
+                                        connection.send_datagram(Bytes::from_iter(buffer))?;
+                                    }
+                                } else {
+                                    panic!("Cannot accept endpoint");
+                                }
+                            },
+                            Err(why) => panic!("cannot serve: {}", why),
+                        };
+                    } else {
+                        process_input(&mut instdout).await?;
+                    }
                 },
             };
         },
-        Subcommand::Ingest { input } => {
-            let mut input = if input.eq(&STDIN_PATH) {
-                unsafe { File::from_raw_fd(io::stdin().as_raw_fd()) }
-            } else {
-                File::open(input)?
-            };
-            process_input(&mut input).await?;
-        },
+        CmdKind::Send {
+            device,
+            port,
+            host,
+            pubkey,
+        } => todo!(),
     };
     Ok(())
 }
