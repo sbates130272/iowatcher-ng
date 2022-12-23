@@ -17,7 +17,6 @@ quinn = "0.9.3"
 rustls = { version = "*", features = ["dangerous_configuration", "quic"] }
 rustls-pemfile = "1.0.1"
 crossbeam = "0.8.2"
-iter-write = "0.3"
 
 [build-dependencies]
 prost-build = { version = "0.10" }

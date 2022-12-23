@@ -81,13 +81,7 @@ struct Args {
 #[derive(clap::Subcommand, Debug)]
 enum CmdKind {
     /// fork device list and serve if serve enabled
-    Fork {
-        /// list of devices to blktrace
-        device: Vec<String>,
-
-        /// serve blktrace over quicc
-        serve: bool,
-
+    Serve {
         /// port to serve to over quicc
         port: u16,
 
@@ -99,7 +93,7 @@ enum CmdKind {
     },
 
     /// send device list to remote host on port and host
-    Send {
+    Connect {
         /// list of devices to blktrace
         device: Vec<String>,
 
@@ -111,6 +105,9 @@ enum CmdKind {
 
         /// public key
         pubkey: PathBuf,
+
+        /// server name as in server cert
+        sname: String,
     },
 }
 
@@ -150,43 +147,44 @@ fn on_pkt(trace: blktrace::blk_io_trace, _str: &str) -> Result<(), Box<std::io::
             io::ErrorKind::Unsupported,
             format!("cannot address packets with magic value {}", trace.magic),
         )))
+    } else if (trace.action & !blktrace::blktrace_notify___BLK_TN_CGROUP) == blktrace::blktrace_notify___BLK_TN_MESSAGE
+    {
+        println!("NOTIFY");
+        match trace.action & !blktrace::blktrace_notify___BLK_TN_CGROUP {
+            blktrace::blktrace_notify___BLK_TN_PROCESS => println!("PROCESS"),
+            blktrace::blktrace_notify___BLK_TN_TIMESTAMP => println!("TS"),
+            blktrace::blktrace_notify___BLK_TN_MESSAGE => println!("MS"),
+            _ => println!("Unk NOTIFY"),
+        }
+        Ok(())
+    } else if (trace.action & blktrace::blk_tc_act(blktrace::blktrace_cat_BLK_TC_PC)) == 0 {
+        println!("PC");
+        let _w = (trace.action & blktrace::blk_tc_act(blktrace::blktrace_cat_BLK_TC_WRITE)) != 0;
+        let act = (trace.action & 0xffff) & !blktrace::blktrace_act___BLK_TA_CGROUP;
+        match act {
+            blktrace::blktrace_act___BLK_TA_QUEUE => println!("TQ"),
+            blktrace::blktrace_act___BLK_TA_GETRQ => println!("RQ"),
+            blktrace::blktrace_act___BLK_TA_SLEEPRQ => println!("SPRQ"),
+            blktrace::blktrace_act___BLK_TA_REQUEUE => println!("REQ"),
+            blktrace::blktrace_act___BLK_TA_ISSUE => println!("ISSUE"),
+            blktrace::blktrace_act___BLK_TA_COMPLETE => println!("COMPLETE"),
+            blktrace::blktrace_act___BLK_TA_INSERT => println!("INSERT"),
+            _ => println!("Unk PC"),
+        }
+        Ok(())
     } else {
-        if (trace.action & !blktrace::blktrace_notify___BLK_TN_CGROUP) == blktrace::blktrace_notify___BLK_TN_MESSAGE {
-            println!("NOTIFY");
-            match trace.action & !blktrace::blktrace_notify___BLK_TN_CGROUP {
-                blktrace::blktrace_notify___BLK_TN_PROCESS => println!("PROCESS"),
-                blktrace::blktrace_notify___BLK_TN_TIMESTAMP => println!("TS"),
-                blktrace::blktrace_notify___BLK_TN_MESSAGE => println!("MS"),
-                _ => println!("Unk NOTIFY"),
-            }
-        } else if (trace.action & blktrace::blk_tc_act(blktrace::blktrace_cat_BLK_TC_PC)) == 0 {
-            println!("PC");
-            let _w = (trace.action & blktrace::blk_tc_act(blktrace::blktrace_cat_BLK_TC_WRITE)) != 0;
-            let act = (trace.action & 0xffff) & !blktrace::blktrace_act___BLK_TA_CGROUP;
-            match act {
-                blktrace::blktrace_act___BLK_TA_QUEUE => println!("TQ"),
-                blktrace::blktrace_act___BLK_TA_GETRQ => println!("RQ"),
-                blktrace::blktrace_act___BLK_TA_SLEEPRQ => println!("SPRQ"),
-                blktrace::blktrace_act___BLK_TA_REQUEUE => println!("REQ"),
-                blktrace::blktrace_act___BLK_TA_ISSUE => println!("ISSUE"),
-                blktrace::blktrace_act___BLK_TA_COMPLETE => println!("COMPLETE"),
-                blktrace::blktrace_act___BLK_TA_INSERT => println!("INSERT"),
-                _ => println!("Unk PC"),
-            }
-        } else {
-            println!("CGROUP");
-            let _w = (trace.action & blktrace::blk_tc_act(blktrace::blktrace_cat_BLK_TC_WRITE)) != 0;
-            let act = (trace.action & 0xffff) & !blktrace::blktrace_act___BLK_TA_CGROUP;
-            match act {
-                blktrace::blktrace_act___BLK_TA_QUEUE => println!("TQ"),
-                blktrace::blktrace_act___BLK_TA_INSERT => println!("RQ"),
-                blktrace::blktrace_act___BLK_TA_BACKMERGE => println!("SPRQ"),
-                blktrace::blktrace_act___BLK_TA_FRONTMERGE => println!("REQ"),
-                blktrace::blktrace_act___BLK_TA_GETRQ => println!("ISSUE"),
-                blktrace::blktrace_act___BLK_TA_SLEEPRQ => println!("COMPLETE"),
-                blktrace::blktrace_act___BLK_TA_REQUEUE => println!("INSERT"),
-                _ => println!("Unk CGROUP"),
-            }
+        println!("CGROUP");
+        let _w = (trace.action & blktrace::blk_tc_act(blktrace::blktrace_cat_BLK_TC_WRITE)) != 0;
+        let act = (trace.action & 0xffff) & !blktrace::blktrace_act___BLK_TA_CGROUP;
+        match act {
+            blktrace::blktrace_act___BLK_TA_QUEUE => println!("TQ"),
+            blktrace::blktrace_act___BLK_TA_INSERT => println!("RQ"),
+            blktrace::blktrace_act___BLK_TA_BACKMERGE => println!("SPRQ"),
+            blktrace::blktrace_act___BLK_TA_FRONTMERGE => println!("REQ"),
+            blktrace::blktrace_act___BLK_TA_GETRQ => println!("ISSUE"),
+            blktrace::blktrace_act___BLK_TA_SLEEPRQ => println!("COMPLETE"),
+            blktrace::blktrace_act___BLK_TA_REQUEUE => println!("INSERT"),
+            _ => println!("Unk CGROUP"),
         }
         Ok(())
     }
@@ -259,62 +257,60 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .expect("able to install Prometheus recoder/exporter");
 
     match &args.command {
-        CmdKind::Fork {
-            device,
-            serve,
-            port,
-            chain,
-            privkey,
-        } => {
-            let mut arg_stack = Vec::new();
-            for dev in device {
-                arg_stack.push("-d".to_string());
-                arg_stack.push(dev.to_string());
-            }
-            arg_stack.push("-o".to_string());
-            arg_stack.push("-".to_string());
-            match Command::new("blktrace")
-                .args(arg_stack)
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .spawn()
-            {
-                Err(why) => panic!("couldn't spawn blktrace: {}", why),
-                Ok(child) => {
-                    let mut instdout = child.stdout.expect("stdout is opened at this time");
-                    let fifo = Worker::<Vec<u8>>::new_fifo();
-                    if *serve {
-                        let (certs, privkey) = read_certs_from_file(chain, privkey)?;
-                        let mut buffer: [u8; FRAGMENT_SIZE] = [0; FRAGMENT_SIZE];
-                        match Endpoint::server(
-                            ServerConfig::with_single_cert(certs, privkey)?,
-                            SocketAddr::from_str(format!("::{}", port).as_str())?,
-                        ) {
-                            Ok(endpoint) => {
-                                if let Some(accept) = endpoint.accept().await {
-                                    let (connection, _) = accept.into_0rtt().expect("can use 0rtt");
-                                    if let Ok(mut send_stream) = connection.open_uni().await {
-                                        let bytes_read = instdout.read(&mut buffer).expect("readable stdout buffer");
-                                        connection.send_datagram(Bytes::from_iter(buffer))?;
-                                    }
-                                } else {
-                                    panic!("Cannot accept endpoint");
-                                }
-                            },
-                            Err(why) => panic!("cannot serve: {}", why),
-                        };
+        CmdKind::Serve { port, chain, privkey } => {
+            let (certs, privkey) = read_certs_from_file(chain, privkey)?;
+            let mut buffer: [u8; FRAGMENT_SIZE] = [0; FRAGMENT_SIZE];
+            match Endpoint::server(
+                ServerConfig::with_single_cert(certs, privkey)?,
+                SocketAddr::from_str(format!("::{}", port).as_str())?,
+            ) {
+                Ok(endpoint) => {
+                    if let Some(accept) = endpoint.accept().await {
+                        let (connection, _) = accept.into_0rtt().expect("can use 0rtt");
+                        if let Ok(mut recv_stream) = connection.accept_uni().await {
+                            todo!("Handle stream")
+                        }
+                        Ok(())
                     } else {
-                        process_input(&mut instdout).await?;
+                        panic!("Cannot accept endpoint");
                     }
                 },
-            };
+                Err(why) => panic!("cannot serve: {}", why),
+            }
         },
-        CmdKind::Send {
+        CmdKind::Connect {
             device,
             port,
             host,
             pubkey,
-        } => todo!(),
-    };
-    Ok(())
+            sname,
+        } => {
+            let mut arguments = Vec::new();
+            for dev in device {
+                arguments.push("-d".to_string());
+                arguments.push(dev.to_string());
+            }
+            arguments.push("-o".to_string());
+            arguments.push("-".to_string());
+            match Command::new("blktrace").args(arguments).spawn() {
+                Err(why) => panic!("couldn't spawn blktrace: {}", why),
+                Ok(output) => {
+                    let mut buffer: [u8; FRAGMENT_SIZE] = [0; FRAGMENT_SIZE];
+                    let bytes_read = output.
+                    let trace: blktrace::blk_io_trace = unsafe { std::mem::transmute(buffer) };
+                    let mut instdout = child.stdout.expect("stdout is opened at this time");
+                    let mut buffer: [u8; FRAGMENT_SIZE] = [0; FRAGMENT_SIZE];
+                    let saddr = SocketAddr::from_str(format!("{}:{}", &host, &port).as_str())?;
+                    match Endpoint::client(saddr) {
+                        Ok(endpoint) => {
+                            let (connection, zrtt) = endpoint.connect(saddr, sname)?.into_0rtt().expect("0rtt abled");
+                            connection.op
+                        },
+                        Err(why) => panic!("Cannot create connection: {}", why),
+                    }
+                },
+            }
+            Ok(())
+        },
+    }
 }
