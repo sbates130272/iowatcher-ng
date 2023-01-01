@@ -1,3 +1,4 @@
+/*
 BSD 3-Clause License
 
 Copyright (c) 2022, Stephen Bates <sbates@raithlin.com>
@@ -28,3 +29,70 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+mod blktrace_api;
+mod client;
+mod common;
+mod server;
+
+use clap::command;
+use clap::Parser;
+use std::path::PathBuf;
+use std::{error::Error, str};
+
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    /// subcommand
+    #[command(subcommand)]
+    command: CommandKind,
+}
+
+#[derive(clap::Subcommand, Debug)]
+enum CommandKind {
+    /// fork device list and serve if serve enabled
+    Serve {
+        /// certificate chain
+        #[arg(short, long)]
+        cert: PathBuf,
+        /// private key
+        #[arg(short, long)]
+        key: PathBuf,
+        /// port to serve to over quicc
+        port: u16,
+    },
+
+    /// send device list to remote host on port and host
+    Connect {
+        /// ca chain
+        #[arg(short = 'a', long)]
+        ca: PathBuf,
+        /// certificate chain
+        #[arg(short, long)]
+        cert: PathBuf,
+        /// remote host
+        host: String,
+        /// remote port
+        port: u16,
+        /// list of devices to trace
+        #[arg(required = true)]
+        devices: Vec<String>,
+    },
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    env_logger::init();
+    let args = Args::parse();
+    match &args.command {
+        CommandKind::Serve { cert, key, port } => server::serve(cert, key, port).await,
+        CommandKind::Connect {
+            ca,
+            cert,
+            host,
+            port,
+            devices,
+        } => client::connect(ca, cert, host, port, devices).await,
+    }
+}
