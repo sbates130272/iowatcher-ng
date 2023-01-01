@@ -38,14 +38,8 @@ mod server;
 
 use clap::command;
 use clap::Parser;
-use metrics::*;
 use std::path::PathBuf;
-use std::time::Instant;
-use std::{
-    error::Error,
-    io::{self, Read},
-    str,
-};
+use std::{error::Error, str};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -72,25 +66,25 @@ enum CommandKind {
     /// send device list to remote host on port and host
     Connect {
         /// ca chain
-        #[arg(short, long)]
+        #[arg(short = 'a', long)]
         ca: PathBuf,
         /// certificate chain
         #[arg(short, long)]
         cert: PathBuf,
-        /// list of devices to trace
-        #[arg(short, long)]
-        devices: Vec<String>,
         /// remote host
         host: String,
         /// remote port
         port: u16,
+        /// list of devices to trace
+        #[arg(required = true)]
+        devices: Vec<String>,
     },
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    env_logger::init();
     let args = Args::parse();
-
     match &args.command {
         CommandKind::Serve { cert, key, port } => server::serve(cert, key, port).await,
         CommandKind::Connect {

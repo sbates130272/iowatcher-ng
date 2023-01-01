@@ -3,7 +3,6 @@ use std::{
     io::{self, Read},
     net::SocketAddr,
     path::PathBuf,
-    process::Command,
     str,
     str::FromStr,
     time::Instant,
@@ -11,6 +10,7 @@ use std::{
 
 use metrics::{describe_histogram, histogram};
 use quinn::Endpoint;
+use tokio::process::Command;
 
 use crate::blktrace_api;
 
@@ -33,15 +33,18 @@ pub async fn connect(
         Ok(child) => {
             let mut buffer: [u8; blktrace_api::FRAGMENT_SIZE] = [0; blktrace_api::FRAGMENT_SIZE];
             let trace: blktrace_api::blk_io_trace = unsafe { std::mem::transmute(buffer) };
-            let mut instdout = child.stdout.expect("stdout is opened at this time");
+            let mut stdout = child.stdout.expect("stdout is opened at this time");
             let mut buffer: [u8; blktrace_api::FRAGMENT_SIZE] = [0; blktrace_api::FRAGMENT_SIZE];
             let saddr = SocketAddr::from_str(format!("{}:{}", &host, &port).as_str())?;
             match Endpoint::client(saddr) {
                 Ok(endpoint) => {
-                    let (connection, zrtt) = endpoint
+                    let (connection, _) = endpoint
                         .connect(saddr, &host)?
                         .into_0rtt()
                         .expect("0rtt abled");
+                    let mut send_stream = connection.open_uni().await.unwrap();
+                    tokio::io::copy(&mut stdout, &mut send_stream).await?;
+                    send_stream.finish().await?;
                 },
                 Err(why) => panic!("Cannot create connection: {}", why),
             }

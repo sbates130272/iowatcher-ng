@@ -1,9 +1,9 @@
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 #![allow(non_fmt_panics)]
+include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 use std::mem::size_of;
-include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 pub const FRAGMENT_SIZE: usize = size_of::<blk_io_trace>();
 
