@@ -66,7 +66,7 @@ async fn process_input(input: &mut dyn Read) -> Result<(), Box<dyn Error>> {
         );
         let now = Instant::now();
         buffer = [0; blktrace_api::FRAGMENT_SIZE];
-        match on_pkt(trace, &str) {
+        match handle_trace(trace, &str) {
             Ok(()) => {
                 let elapsed = now.elapsed();
                 histogram!("iowatcherng-exporter.packet_time", elapsed, "ok" => "true")
@@ -80,7 +80,7 @@ async fn process_input(input: &mut dyn Read) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn on_pkt(trace: blktrace_api::blk_io_trace, _str: &str) -> Result<(), Box<std::io::Error>> {
+fn handle_trace(trace: blktrace_api::blk_io_trace, _str: &str) -> Result<(), Box<std::io::Error>> {
     if (trace.magic & 0xffffff00) != blktrace_api::BLK_IO_TRACE_MAGIC {
         eprintln!("Bad pkt magic");
         Err(Box::new(std::io::Error::new(
